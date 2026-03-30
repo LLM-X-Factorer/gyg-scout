@@ -15,7 +15,7 @@ frontend/build/
 .env
 
 # Database
-*.db
+data/
 
 # IDE
 .vscode/
