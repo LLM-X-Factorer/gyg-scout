@@ -7,6 +7,7 @@ from app.models.task import TaskStatus
 class TaskCreate(BaseModel):
     keyword: str
     max_pages: int = 3
+    merchant_name: str | None = None
 
 
 class ActivityResponse(BaseModel):
@@ -34,6 +35,7 @@ class TaskResponse(BaseModel):
     keyword: str
     status: TaskStatus
     max_pages: int
+    merchant_name: str | None = None
     progress: int
     error: str | None = None
     report_markdown: str | None = None

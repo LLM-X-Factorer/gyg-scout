@@ -10,7 +10,65 @@ from app.report_template import wrap_report_html
 logger = logging.getLogger(__name__)
 
 
-def _build_prompt(keyword: str, activities: list[dict]) -> str:
+def _build_merchant_section(name: str) -> str:
+    return f"""
+
+### 11. 「{name}」专属商业诊断与战略建议（重点章节）
+
+**重要说明**：本章节专门为商家「{name}」撰写。请从数据中找到该商家的所有产品，进行深度分析和战略建议。请保持辩证思维——既指出优势也不回避问题，既看到机会也警示风险。
+
+#### 11.1 现状诊断
+- **产品矩阵审视**：「{name}」目前有哪些产品？覆盖了哪些品类？产品之间的关系是什么（互补？重叠？蚕食？）
+- **市场位置评估**：在整个市场中处于什么位置？（头部/腰部/尾部）与头部竞品的差距有多大？差距的核心原因是什么？
+- **核心竞争力**：「{name}」当前最大的竞争优势是什么？这个优势是否可持续？是否容易被复制？
+- **关键短板**：最需要改进的是什么？（产品设计？定价？文案？评论数？品类覆盖？）
+
+#### 11.2 商业模式思考
+请从商业模式的角度辩证分析：
+
+**增长路径选择**（需辩证讨论利弊）：
+- **路径A：深耕现有品类** — 在当前产品领域做到极致，提升客单价和复购
+  - 正方论点：专注带来口碑，避免资源分散
+  - 反方论点：天花板明显，单品类抗风险能力弱
+- **路径B：横向扩展品类** — 开发新的产品线（比如从科技游扩展到文化游/美食游）
+  - 正方论点：多元化降低风险，交叉销售提升LTV
+  - 反方论点：每个新品类都需要投入，可能稀释品牌定位
+- **路径C：纵向整合供应链** — 比如自建导游团队、合作独家景点
+  - 正方论点：提升服务品质和利润率
+  - 反方论点：重资产运营，灵活性降低
+
+请基于「{name}」的实际数据，推荐最优路径并论证。
+
+**定价策略辩证**：
+- 当前定价在市场中的竞争力如何？
+- 是否有提价空间？提价的前提条件是什么？
+- 低价引流 vs 高价高质，哪种更适合「{name}」当前阶段？为什么？
+
+**规模化思考**：
+- 「{name}」当前的业务规模如何？（从评论数和产品数推测）
+- 规模化的主要瓶颈是什么？（导游供给？获客成本？运营能力？）
+- 如何突破瓶颈？
+
+#### 11.3 竞争策略
+- **与头部的差异化**：不应正面硬刚头部，「{name}」应该怎样错位竞争？
+- **护城河构建**：如何建立竞争对手难以复制的优势？（独家资源？品牌认知？服务标准？）
+- **防御策略**：如果头部竞品进入「{name}」的优势领域，如何应对？
+
+#### 11.4 具体可落地的行动建议
+请给出 **5-8 条具体、可执行、有优先级** 的行动建议，每条包括：
+- **做什么**（具体动作）
+- **为什么**（基于数据的理由）
+- **预期效果**
+- **风险/代价**
+- **优先级**（P0 立即执行 / P1 本月执行 / P2 本季度执行）
+
+#### 11.5 需要警惕的陷阱
+- 列出 3-5 个「{name}」在扩张过程中最可能踩的坑
+- 每个陷阱附带具体的规避建议
+"""
+
+
+def _build_prompt(keyword: str, activities: list[dict], merchant_name: str | None = None) -> str:
     summary_data = []
     for a in activities:
         summary_data.append({
@@ -106,11 +164,11 @@ def _build_prompt(keyword: str, activities: list[dict]) -> str:
 
 ### 10. 总结：行动清单
 - 列出 5-8 条具体可执行的行动建议，按优先级排序
-
+{_build_merchant_section(merchant_name) if merchant_name else ""}
 请用数据说话，引用具体数字。语言风格：专业但易读，适合商业决策参考。全文使用中文。Output in Markdown format only."""
 
 
-async def analyze_activities(keyword: str, activities: list[dict]) -> tuple[str, str]:
+async def analyze_activities(keyword: str, activities: list[dict], merchant_name: str | None = None) -> tuple[str, str]:
     """Use Gemini to analyze scraped activities. Returns (markdown, html)."""
     if not activities:
         md = f"# Research Report: {keyword}\n\nNo activities found for this keyword."
@@ -122,7 +180,7 @@ async def analyze_activities(keyword: str, activities: list[dict]) -> tuple[str,
         return md, wrap_report_html(body, title=f"竞品分析报告：{keyword}")
 
     client = genai.Client(api_key=settings.gemini_api_key)
-    prompt = _build_prompt(keyword, activities)
+    prompt = _build_prompt(keyword, activities, merchant_name=merchant_name)
 
     try:
         response = client.models.generate_content(

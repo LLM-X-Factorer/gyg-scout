@@ -23,6 +23,7 @@ class Task(Base):
         Enum(TaskStatus), default=TaskStatus.PENDING
     )
     max_pages: Mapped[int] = mapped_column(Integer, default=3)
+    merchant_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     progress: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     report_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)

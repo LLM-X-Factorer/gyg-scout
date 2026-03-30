@@ -4,6 +4,7 @@ import { api } from '../api';
 export function CreateTask({ onCreated }: { onCreated: () => void }) {
   const [keyword, setKeyword] = useState('');
   const [maxPages, setMaxPages] = useState(3);
+  const [merchantName, setMerchantName] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -11,7 +12,7 @@ export function CreateTask({ onCreated }: { onCreated: () => void }) {
     if (!keyword.trim()) return;
     setLoading(true);
     try {
-      await api.createTask(keyword.trim(), maxPages);
+      await api.createTask(keyword.trim(), maxPages, merchantName.trim() || undefined);
       setKeyword('');
       onCreated();
     } finally {
@@ -20,8 +21,8 @@ export function CreateTask({ onCreated }: { onCreated: () => void }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-3 items-end">
-      <div className="flex-1">
+    <form onSubmit={handleSubmit} className="flex gap-3 items-end flex-wrap">
+      <div className="flex-1 min-w-[200px]">
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Search Keyword
         </label>
@@ -29,7 +30,19 @@ export function CreateTask({ onCreated }: { onCreated: () => void }) {
           type="text"
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          placeholder="e.g. paris walking tour"
+          placeholder="e.g. shenzhen"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+      <div className="w-48">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          My Store Name (optional)
+        </label>
+        <input
+          type="text"
+          value={merchantName}
+          onChange={(e) => setMerchantName(e.target.value)}
+          placeholder="e.g. La Roja"
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>

@@ -38,7 +38,7 @@ async def run_task(task_id: int):
             await db.commit()
 
             report_md, report_html = await analyze_activities(
-                task.keyword, activities
+                task.keyword, activities, merchant_name=task.merchant_name
             )
 
             task.report_markdown = report_md
@@ -61,7 +61,7 @@ async def create_task(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    task = Task(keyword=body.keyword, max_pages=body.max_pages)
+    task = Task(keyword=body.keyword, max_pages=body.max_pages, merchant_name=body.merchant_name)
     db.add(task)
     await db.commit()
 

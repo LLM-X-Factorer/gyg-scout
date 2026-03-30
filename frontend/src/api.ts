@@ -15,10 +15,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  createTask: (keyword: string, max_pages = 3) =>
+  createTask: (keyword: string, max_pages = 3, merchant_name?: string) =>
     request<Task>('/api/tasks', {
       method: 'POST',
-      body: JSON.stringify({ keyword, max_pages }),
+      body: JSON.stringify({ keyword, max_pages, merchant_name }),
     }),
 
   listTasks: () => request<TaskListItem[]>('/api/tasks'),
