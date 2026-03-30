@@ -283,14 +283,9 @@ async def scrape_keyword(
                 if page_num < max_pages:
                     await _random_delay()
 
-            # Scrape details for top activities (by review count)
-            sorted_items = sorted(
-                all_activities,
-                key=lambda x: x.get("review_count") or 0,
-                reverse=True,
-            )
-            detail_count = min(20, len(sorted_items))
-            for i, item in enumerate(sorted_items[:detail_count]):
+            # Scrape details for all activities
+            detail_count = len(all_activities)
+            for i, item in enumerate(all_activities):
                 detail_url = item.get("url")
                 if not detail_url:
                     continue
@@ -323,7 +318,10 @@ async def scrape_keyword(
                         act.cancellation_policy = detail.get("cancellation_policy")
                         act.supplier = detail.get("supplier")
                         act.raw_data = item
-                        await db.commit()
+                    task = await db.get(Task, task_id)
+                    if task:
+                        task.progress = 70 + int(((i + 1) / detail_count) * 10)
+                    await db.commit()
                 except Exception as e:
                     logger.warning(f"Failed to get detail: {e}")
 
