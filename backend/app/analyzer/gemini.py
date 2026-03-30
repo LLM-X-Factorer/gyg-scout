@@ -36,7 +36,7 @@ def _build_prompt(keyword: str, activities: list[dict]) -> str:
 - 主要品类和产品形态分布（跟团游、自由行、一日游、多日游、门票、体验等）
 
 ### 2. 价格策略分析
-- 价格区间（最低、最高、均价、中位数），使用欧元
+- 价格区间（最低、最高、均价、中位数），使用人民币（¥/CNY）
 - 价格带分布（按区间统计产品数量占比）
 - 不同价格带的竞争激烈程度
 - **定价建议**：作为新入场商家，建议的定价区间和理由
@@ -127,9 +127,9 @@ def _generate_fallback_report(keyword: str, activities: list[dict]) -> str:
         avg_price = sum(prices) / len(prices)
         median_price = prices[len(prices) // 2]
         lines.extend([
-            f"- **Range**: €{min(prices):.0f} - €{max(prices):.0f}",
-            f"- **Average**: €{avg_price:.0f}",
-            f"- **Median**: €{median_price:.0f}",
+            f"- **Range**: ¥{min(prices):.0f} - ¥{max(prices):.0f}",
+            f"- **Average**: ¥{avg_price:.0f}",
+            f"- **Median**: ¥{median_price:.0f}",
             f"- **Products with price**: {len(prices)}/{len(activities)}",
         ])
     else:
@@ -165,7 +165,7 @@ def _generate_fallback_report(keyword: str, activities: list[dict]) -> str:
     )
     for a in sorted_activities[:10]:
         title = (a.get("title") or "")[:50]
-        price = f"€{a['price']:.0f}" if a.get("price") else "-"
+        price = f"¥{a['price']:.0f}" if a.get("price") else "-"
         rating = f"{a['rating']:.1f}" if a.get("rating") else "-"
         reviews_str = f"{a['review_count']:,}" if a.get("review_count") else "-"
         lines.append(f"| {title} | {price} | {rating} | {reviews_str} |")

@@ -24,12 +24,12 @@ function PriceDistribution({ activities }: { activities: Activity[] }) {
 
   const buckets: Record<string, number> = {};
   for (let i = min; i <= max; i += bucketSize) {
-    const label = `€${i}-${i + bucketSize}`;
+    const label = `¥${i}-${i + bucketSize}`;
     buckets[label] = 0;
   }
   for (const p of prices) {
     const idx = Math.floor((p - min) / bucketSize) * bucketSize + min;
-    const label = `€${idx}-${idx + bucketSize}`;
+    const label = `¥${idx}-${idx + bucketSize}`;
     buckets[label] = (buckets[label] || 0) + 1;
   }
 
@@ -71,7 +71,7 @@ function PriceVsRating({ activities }: { activities: Activity[] }) {
       <ResponsiveContainer width="100%" height={200}>
         <ScatterChart>
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="price" name="Price (€)" tick={{ fontSize: 11 }} />
+          <XAxis dataKey="price" name="Price (¥)" tick={{ fontSize: 11 }} />
           <YAxis dataKey="rating" name="Rating" domain={[0, 5]} />
           <Tooltip />
           <Scatter data={data} fill="#8b5cf6" />

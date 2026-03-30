@@ -74,7 +74,7 @@ export function TaskDetail({
                       )}
                     </td>
                     <td className="p-3">
-                      {a.price != null ? `€${a.price.toFixed(0)}` : '-'}
+                      {a.price != null ? `¥${a.price.toFixed(0)}` : '-'}
                     </td>
                     <td className="p-3">{a.rating?.toFixed(1) ?? '-'}</td>
                     <td className="p-3">

@@ -33,12 +33,12 @@ EXTRACT_CARDS_JS = """
         // Price: last "From €XX" pattern (discounted price)
         let price = null;
         let currency = null;
-        const priceMatches = allText.match(/From[\\s]*([€$£¥])([\\d,.]+)/g);
+        const priceMatches = allText.match(/From[\\s]*(?:RMB)?([€$£¥])([\\d,.]+)/g);
         if (priceMatches && priceMatches.length > 0) {
             const last = priceMatches[priceMatches.length - 1];
-            const pm = last.match(/From[\\s]*([€$£¥])([\\d,.]+)/);
+            const pm = last.match(/From[\\s]*(?:RMB)?([€$£¥])([\\d,.]+)/);
             if (pm) {
-                currency = pm[1] === '€' ? 'EUR' : pm[1] === '$' ? 'USD' : pm[1] === '£' ? 'GBP' : pm[1] === '¥' ? 'JPY' : 'EUR';
+                currency = allText.includes('RMB') ? 'CNY' : pm[1] === '€' ? 'EUR' : pm[1] === '$' ? 'USD' : pm[1] === '£' ? 'GBP' : pm[1] === '¥' ? 'JPY' : 'CNY';
                 price = parseFloat(pm[2].replace(',', ''));
             }
         }
@@ -224,7 +224,7 @@ async def scrape_keyword(
             for page_num in range(1, max_pages + 1):
                 search_url = (
                     f"{BASE_URL}/s/?q={quote_plus(keyword)}"
-                    f"&page={page_num}&currency=EUR"
+                    f"&page={page_num}&currency=CNY"
                 )
                 logger.info(f"Scraping page {page_num}: {search_url}")
 
