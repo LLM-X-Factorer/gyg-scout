@@ -63,7 +63,11 @@ async def create_task(
     task = Task(keyword=body.keyword, max_pages=body.max_pages)
     db.add(task)
     await db.commit()
-    await db.refresh(task)
+
+    result = await db.execute(
+        select(Task).where(Task.id == task.id).options(selectinload(Task.activities))
+    )
+    task = result.scalar_one()
 
     background_tasks.add_task(run_task, task.id)
     return task

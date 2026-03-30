@@ -81,7 +81,7 @@ async def analyze_activities(keyword: str, activities: list[dict]) -> tuple[str,
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=prompt,
         )
         md = response.text

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import random
+import re
 from urllib.parse import quote_plus
 
 from playwright.async_api import async_playwright, Page
@@ -17,143 +18,122 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0",
 ]
+
+EXTRACT_CARDS_JS = """
+() => {
+    const cards = document.querySelectorAll('[data-test-id="vertical-activity-card"]');
+    return Array.from(cards).map(card => {
+        const link = card.querySelector('[data-test-id="vertical-activity-card-link"]');
+        const title = card.querySelector('[data-test-id="activity-card-title"]');
+        const rating = card.querySelector('[data-test-id="activity-card-rating-overall"]');
+        const img = card.querySelector('img');
+
+        // Extract href and GYG ID from URL pattern: ...-t{ID}/
+        const href = link ? link.getAttribute('href') : null;
+        let gygId = null;
+        if (href) {
+            const match = href.match(/-t(\\d+)/);
+            if (match) gygId = match[1];
+        }
+
+        // Get all text content for parsing
+        const allText = card.textContent || '';
+
+        // Extract price - look for "From" pattern followed by currency+number
+        let price = null;
+        let currency = null;
+        const priceMatches = allText.match(/From[\\s]*([€$£¥])([\\d,.]+)/g);
+        if (priceMatches && priceMatches.length > 0) {
+            // Take the last "From" price (usually the discounted one)
+            const last = priceMatches[priceMatches.length - 1];
+            const pm = last.match(/From[\\s]*([€$£¥])([\\d,.]+)/);
+            if (pm) {
+                currency = pm[1] === '€' ? 'EUR' : pm[1] === '$' ? 'USD' : pm[1] === '£' ? 'GBP' : pm[1] === '¥' ? 'JPY' : 'EUR';
+                price = parseFloat(pm[2].replace(',', ''));
+            }
+        }
+
+        // Extract review count from pattern like (15,455)
+        let reviewCount = null;
+        const reviewMatch = allText.match(/\\(([\\d,]+)\\)/);
+        if (reviewMatch) {
+            reviewCount = parseInt(reviewMatch[1].replace(',', ''));
+        }
+
+        // Extract duration patterns
+        let duration = null;
+        const durationMatch = allText.match(/(\\d+[\\s-]+\\d+\\s+(?:hours?|days?|minutes?))|((\\d+)\\s*(?:hours?|days?|minutes?))/i);
+        if (durationMatch) {
+            duration = durationMatch[0];
+        }
+        // Also match "X minutes" pattern
+        if (!duration) {
+            const minMatch = allText.match(/(\\d+)\\s*minutes/i);
+            if (minMatch) duration = minMatch[0];
+        }
+
+        return {
+            gyg_id: gygId,
+            title: title ? title.textContent.trim() : null,
+            url: href,
+            price: price,
+            currency: currency,
+            rating: rating ? parseFloat(rating.textContent.trim()) : null,
+            review_count: reviewCount,
+            duration: duration,
+            image_url: img ? img.getAttribute('src') : null,
+        };
+    }).filter(c => c.title);
+}
+"""
+
+EXTRACT_DETAIL_JS = """
+() => {
+    const result = {};
+
+    // Description
+    const aboutSection = document.querySelector('[data-test-id="about-this-activity"]');
+    if (aboutSection) {
+        result.description = aboutSection.textContent.trim().substring(0, 2000);
+    }
+
+    // Highlights
+    const highlights = [];
+    document.querySelectorAll('[data-test-id="highlights"] li, [data-test-id="activity-highlights"] li').forEach(li => {
+        const t = li.textContent.trim();
+        if (t) highlights.push(t);
+    });
+    if (highlights.length) result.highlights = highlights;
+
+    // Includes / Excludes
+    const includes = [];
+    const excludes = [];
+    document.querySelectorAll('[data-test-id="inclusion-list"] li, [data-test-id="inclusions"] li').forEach(li => {
+        includes.push(li.textContent.trim());
+    });
+    document.querySelectorAll('[data-test-id="exclusion-list"] li, [data-test-id="exclusions"] li').forEach(li => {
+        excludes.push(li.textContent.trim());
+    });
+    if (includes.length) result.includes = includes;
+    if (excludes.length) result.excludes = excludes;
+
+    // Cancellation policy
+    const cancel = document.querySelector('[data-test-id="cancellation-policy"]');
+    if (cancel) result.cancellation_policy = cancel.textContent.trim().substring(0, 500);
+
+    // Supplier
+    const supplier = document.querySelector('[data-test-id="supplier-name"], [data-test-id="offered-by"] a');
+    if (supplier) result.supplier = supplier.textContent.trim();
+
+    return result;
+}
+"""
 
 
 async def _random_delay():
     delay = random.uniform(settings.scraper_delay_min, settings.scraper_delay_max)
     await asyncio.sleep(delay)
-
-
-async def _extract_search_results(page: Page) -> list[dict]:
-    """Extract activity cards from a GYG search results page."""
-    results = []
-
-    cards = await page.query_selector_all('[data-activity-card-id]')
-    if not cards:
-        cards = await page.query_selector_all('div[class*="activity-card"]')
-    if not cards:
-        cards = await page.query_selector_all('article')
-
-    for card in cards:
-        try:
-            item = {}
-
-            activity_id = await card.get_attribute("data-activity-card-id")
-            item["gyg_id"] = activity_id
-
-            title_el = await card.query_selector('h3, h2, [class*="title"]')
-            if title_el:
-                item["title"] = (await title_el.inner_text()).strip()
-
-            link_el = await card.query_selector('a[href*="/activity/"], a[href*="-t"]')
-            if not link_el:
-                link_el = await card.query_selector("a")
-            if link_el:
-                href = await link_el.get_attribute("href")
-                if href:
-                    item["url"] = href if href.startswith("http") else BASE_URL + href
-
-            price_el = await card.query_selector('[class*="price"] span, [data-test*="price"]')
-            if not price_el:
-                price_el = await card.query_selector('[class*="price"]')
-            if price_el:
-                price_text = (await price_el.inner_text()).strip()
-                item["price_text"] = price_text
-                price_num = "".join(c for c in price_text if c.isdigit() or c == ".")
-                if price_num:
-                    try:
-                        item["price"] = float(price_num)
-                    except ValueError:
-                        pass
-
-            rating_el = await card.query_selector('[class*="rating"], [aria-label*="rating"]')
-            if rating_el:
-                rating_text = await rating_el.get_attribute("aria-label") or await rating_el.inner_text()
-                nums = [s for s in rating_text.replace(",", "").split() if s.replace(".", "").isdigit()]
-                if nums:
-                    try:
-                        item["rating"] = float(nums[0])
-                    except ValueError:
-                        pass
-
-            review_el = await card.query_selector('[class*="review-count"], [class*="ratings-count"]')
-            if review_el:
-                review_text = (await review_el.inner_text()).strip()
-                review_num = "".join(c for c in review_text if c.isdigit())
-                if review_num:
-                    try:
-                        item["review_count"] = int(review_num)
-                    except ValueError:
-                        pass
-
-            duration_el = await card.query_selector('[class*="duration"]')
-            if duration_el:
-                item["duration"] = (await duration_el.inner_text()).strip()
-
-            img_el = await card.query_selector("img")
-            if img_el:
-                item["image_url"] = await img_el.get_attribute("src")
-
-            if item.get("title"):
-                results.append(item)
-        except Exception as e:
-            logger.warning(f"Failed to extract card: {e}")
-            continue
-
-    return results
-
-
-async def _extract_activity_detail(page: Page) -> dict:
-    """Extract detailed info from a GYG activity detail page."""
-    detail = {}
-
-    desc_el = await page.query_selector('[class*="description"], [data-test*="description"]')
-    if desc_el:
-        detail["description"] = (await desc_el.inner_text()).strip()[:2000]
-
-    highlights = []
-    hl_els = await page.query_selector_all('[class*="highlight"] li, [data-test*="highlight"] li')
-    for el in hl_els:
-        text = (await el.inner_text()).strip()
-        if text:
-            highlights.append(text)
-    if highlights:
-        detail["highlights"] = highlights
-
-    includes = []
-    inc_section = await page.query_selector('[class*="included"], [data-test*="included"]')
-    if inc_section:
-        inc_items = await inc_section.query_selector_all("li")
-        for el in inc_items:
-            text = (await el.inner_text()).strip()
-            if text:
-                includes.append(text)
-    if includes:
-        detail["includes"] = includes
-
-    excludes = []
-    exc_section = await page.query_selector('[class*="excluded"], [data-test*="excluded"]')
-    if exc_section:
-        exc_items = await exc_section.query_selector_all("li")
-        for el in exc_items:
-            text = (await el.inner_text()).strip()
-            if text:
-                excludes.append(text)
-    if excludes:
-        detail["excludes"] = excludes
-
-    cancel_el = await page.query_selector('[class*="cancellation"], [data-test*="cancellation"]')
-    if cancel_el:
-        detail["cancellation_policy"] = (await cancel_el.inner_text()).strip()[:500]
-
-    supplier_el = await page.query_selector('[class*="supplier"], [class*="provider"]')
-    if supplier_el:
-        detail["supplier"] = (await supplier_el.inner_text()).strip()[:200]
-
-    return detail
 
 
 async def scrape_keyword(
@@ -162,7 +142,6 @@ async def scrape_keyword(
     task_id: int,
     db: AsyncSession,
 ) -> list[dict]:
-    """Scrape GYG search results for a keyword. Save activities to DB."""
     all_activities = []
 
     async with async_playwright() as p:
@@ -173,16 +152,26 @@ async def scrape_keyword(
             locale="en-US",
         )
         page = await context.new_page()
+        await page.add_init_script(
+            'Object.defineProperty(navigator, "webdriver", { get: () => false });'
+        )
 
         try:
             for page_num in range(1, max_pages + 1):
-                search_url = f"{BASE_URL}/s/?q={quote_plus(keyword)}&page={page_num}"
+                search_url = (
+                    f"{BASE_URL}/s/?q={quote_plus(keyword)}"
+                    f"&page={page_num}&currency=EUR"
+                )
                 logger.info(f"Scraping page {page_num}: {search_url}")
 
-                await page.goto(search_url, wait_until="domcontentloaded", timeout=settings.scraper_timeout)
-                await page.wait_for_timeout(2000)
+                await page.goto(
+                    search_url,
+                    wait_until="domcontentloaded",
+                    timeout=settings.scraper_timeout,
+                )
+                await page.wait_for_timeout(3000)
 
-                results = await _extract_search_results(page)
+                results = await page.evaluate(EXTRACT_CARDS_JS)
                 if not results:
                     logger.info(f"No results on page {page_num}, stopping")
                     break
@@ -190,16 +179,11 @@ async def scrape_keyword(
                 logger.info(f"Found {len(results)} activities on page {page_num}")
 
                 for item in results:
-                    detail_url = item.get("url")
-                    if detail_url:
-                        try:
-                            await _random_delay()
-                            await page.goto(detail_url, wait_until="domcontentloaded", timeout=settings.scraper_timeout)
-                            await page.wait_for_timeout(1500)
-                            detail = await _extract_activity_detail(page)
-                            item.update(detail)
-                        except Exception as e:
-                            logger.warning(f"Failed to get detail for {detail_url}: {e}")
+                    if item.get("url") and not item["url"].startswith("http"):
+                        item["url"] = BASE_URL + item["url"]
+                    # Strip ranking_uuid from URL
+                    if item.get("url"):
+                        item["url"] = re.sub(r'\?ranking_uuid=[^&]+', '', item["url"])
 
                     activity = Activity(
                         task_id=task_id,
@@ -210,13 +194,7 @@ async def scrape_keyword(
                         currency=item.get("currency", "EUR"),
                         rating=item.get("rating"),
                         review_count=item.get("review_count"),
-                        supplier=item.get("supplier"),
                         duration=item.get("duration"),
-                        description=item.get("description"),
-                        highlights=item.get("highlights"),
-                        includes=item.get("includes"),
-                        excludes=item.get("excludes"),
-                        cancellation_policy=item.get("cancellation_policy"),
                         image_url=item.get("image_url"),
                         raw_data=item,
                     )
@@ -230,6 +208,50 @@ async def scrape_keyword(
 
                 if page_num < max_pages:
                     await _random_delay()
+
+            # Scrape details for top activities (by review count)
+            sorted_items = sorted(
+                all_activities,
+                key=lambda x: x.get("review_count") or 0,
+                reverse=True,
+            )
+            detail_count = min(10, len(sorted_items))
+            for i, item in enumerate(sorted_items[:detail_count]):
+                detail_url = item.get("url")
+                if not detail_url:
+                    continue
+                try:
+                    await _random_delay()
+                    logger.info(f"Scraping detail {i+1}/{detail_count}: {item.get('title', '')[:50]}")
+                    await page.goto(
+                        detail_url,
+                        wait_until="domcontentloaded",
+                        timeout=settings.scraper_timeout,
+                    )
+                    await page.wait_for_timeout(2000)
+                    detail = await page.evaluate(EXTRACT_DETAIL_JS)
+                    item.update(detail)
+
+                    # Update DB record
+                    from sqlalchemy import select
+                    result = await db.execute(
+                        select(Activity).where(
+                            Activity.task_id == task_id,
+                            Activity.gyg_id == item.get("gyg_id"),
+                        )
+                    )
+                    act = result.scalar_one_or_none()
+                    if act:
+                        act.description = detail.get("description")
+                        act.highlights = detail.get("highlights")
+                        act.includes = detail.get("includes")
+                        act.excludes = detail.get("excludes")
+                        act.cancellation_policy = detail.get("cancellation_policy")
+                        act.supplier = detail.get("supplier")
+                        act.raw_data = item
+                        await db.commit()
+                except Exception as e:
+                    logger.warning(f"Failed to get detail: {e}")
 
         finally:
             await browser.close()
