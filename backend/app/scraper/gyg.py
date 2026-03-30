@@ -22,30 +22,19 @@ USER_AGENTS = [
 
 EXTRACT_CARDS_JS = """
 () => {
-    const cards = document.querySelectorAll('[data-test-id="vertical-activity-card"]');
-    return Array.from(cards).map(card => {
-        const link = card.querySelector('[data-test-id="vertical-activity-card-link"]');
-        const title = card.querySelector('[data-test-id="activity-card-title"]');
-        const rating = card.querySelector('[data-test-id="activity-card-rating-overall"]');
-        const img = card.querySelector('img');
-
-        // Extract href and GYG ID from URL pattern: ...-t{ID}/
-        const href = link ? link.getAttribute('href') : null;
+    // Helper: parse common fields from text content
+    function parseCardText(allText, href) {
         let gygId = null;
         if (href) {
             const match = href.match(/-t(\\d+)/);
             if (match) gygId = match[1];
         }
 
-        // Get all text content for parsing
-        const allText = card.textContent || '';
-
-        // Extract price - look for "From" pattern followed by currency+number
+        // Price: last "From €XX" pattern (discounted price)
         let price = null;
         let currency = null;
         const priceMatches = allText.match(/From[\\s]*([€$£¥])([\\d,.]+)/g);
         if (priceMatches && priceMatches.length > 0) {
-            // Take the last "From" price (usually the discounted one)
             const last = priceMatches[priceMatches.length - 1];
             const pm = last.match(/From[\\s]*([€$£¥])([\\d,.]+)/);
             if (pm) {
@@ -54,37 +43,111 @@ EXTRACT_CARDS_JS = """
             }
         }
 
-        // Extract review count from pattern like (15,455)
+        // Review count: (N,NNN)
         let reviewCount = null;
         const reviewMatch = allText.match(/\\(([\\d,]+)\\)/);
         if (reviewMatch) {
             reviewCount = parseInt(reviewMatch[1].replace(',', ''));
         }
 
-        // Extract duration patterns
-        let duration = null;
-        const durationMatch = allText.match(/(\\d+[\\s-]+\\d+\\s+(?:hours?|days?|minutes?))|((\\d+)\\s*(?:hours?|days?|minutes?))/i);
-        if (durationMatch) {
-            duration = durationMatch[0];
+        // Rating: standalone decimal like 4.9 or 5 before parenthesis
+        let rating = null;
+        const ratingMatch = allText.match(/(\\d\\.\\d)\\s*\\(/);
+        if (ratingMatch) {
+            rating = parseFloat(ratingMatch[1]);
+        } else {
+            // Match standalone "5" before "("
+            const ratingMatch2 = allText.match(/([45])\\s*\\(/);
+            if (ratingMatch2) rating = parseFloat(ratingMatch2[1]);
         }
-        // Also match "X minutes" pattern
+
+        // Duration
+        let duration = null;
+        const durationMatch = allText.match(/(\\d+(?:\\.\\d+)?\\s*-\\s*\\d+(?:\\.\\d+)?\\s+(?:hours?|days?|minutes?))|(\\d+(?:\\.\\d+)?\\s+(?:hours?|days?|minutes?))/i);
+        if (durationMatch) duration = durationMatch[0];
         if (!duration) {
             const minMatch = allText.match(/(\\d+)\\s*minutes/i);
             if (minMatch) duration = minMatch[0];
         }
 
-        return {
-            gyg_id: gygId,
-            title: title ? title.textContent.trim() : null,
-            url: href,
-            price: price,
-            currency: currency,
-            rating: rating ? parseFloat(rating.textContent.trim()) : null,
-            review_count: reviewCount,
-            duration: duration,
-            image_url: img ? img.getAttribute('src') : null,
-        };
-    }).filter(c => c.title);
+        return { gygId, price, currency, rating, reviewCount, duration };
+    }
+
+    const results = [];
+    const seenIds = new Set();
+
+    // Strategy 1: vertical-activity-card (grid layout, e.g. "paris tour")
+    document.querySelectorAll('[data-test-id="vertical-activity-card"]').forEach(card => {
+        const link = card.querySelector('[data-test-id="vertical-activity-card-link"]');
+        const title = card.querySelector('[data-test-id="activity-card-title"]');
+        const ratingEl = card.querySelector('[data-test-id="activity-card-rating-overall"]');
+        const img = card.querySelector('img');
+        const href = link ? link.getAttribute('href') : null;
+        const allText = card.textContent || '';
+        const parsed = parseCardText(allText, href);
+
+        if (ratingEl) parsed.rating = parseFloat(ratingEl.textContent.trim()) || parsed.rating;
+        if (parsed.gygId && !seenIds.has(parsed.gygId)) {
+            seenIds.add(parsed.gygId);
+            results.push({
+                gyg_id: parsed.gygId,
+                title: title ? title.textContent.trim() : null,
+                url: href,
+                price: parsed.price,
+                currency: parsed.currency,
+                rating: parsed.rating,
+                review_count: parsed.reviewCount,
+                duration: parsed.duration,
+                image_url: img ? img.getAttribute('src') : null,
+            });
+        }
+    });
+
+    // Strategy 2: activity links in list layout (e.g. "shenzhen")
+    if (results.length === 0) {
+        document.querySelectorAll('a[href*="-t"]').forEach(link => {
+            const href = link.getAttribute('href') || '';
+            if (!href.match(/-t\\d+\\//)) return; // must be activity URL pattern
+            const idMatch = href.match(/-t(\\d+)\\//);
+            if (!idMatch) return;
+            const gygId = idMatch[1];
+            if (seenIds.has(gygId)) return;
+
+            const allText = link.textContent || '';
+            if (allText.length < 10) return; // skip navigation links
+
+            const parsed = parseCardText(allText, href);
+            const img = link.querySelector('img');
+
+            // Extract title: usually the longest meaningful text line
+            const titleEl = link.querySelector('h2, h3, [class*="title"]');
+            let title = titleEl ? titleEl.textContent.trim() : null;
+            if (!title) {
+                // Fallback: derive from URL slug
+                const slugMatch = href.match(/\\/([^/]+)-t\\d+/);
+                if (slugMatch) {
+                    title = slugMatch[1].replace(/-/g, ' ').replace(/^\\w/, c => c.toUpperCase());
+                }
+            }
+
+            if (title && title.length > 5) {
+                seenIds.add(gygId);
+                results.push({
+                    gyg_id: gygId,
+                    title: title,
+                    url: href,
+                    price: parsed.price,
+                    currency: parsed.currency,
+                    rating: parsed.rating,
+                    review_count: parsed.reviewCount,
+                    duration: parsed.duration,
+                    image_url: img ? img.getAttribute('src') : null,
+                });
+            }
+        });
+    }
+
+    return results;
 }
 """
 
@@ -143,6 +206,7 @@ async def scrape_keyword(
     db: AsyncSession,
 ) -> list[dict]:
     all_activities = []
+    seen_ids = set()
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=settings.scraper_headless)
@@ -181,9 +245,14 @@ async def scrape_keyword(
                 for item in results:
                     if item.get("url") and not item["url"].startswith("http"):
                         item["url"] = BASE_URL + item["url"]
-                    # Strip ranking_uuid from URL
                     if item.get("url"):
                         item["url"] = re.sub(r'\?ranking_uuid=[^&]+', '', item["url"])
+
+                    gyg_id = item.get("gyg_id")
+                    if gyg_id and gyg_id in seen_ids:
+                        continue
+                    if gyg_id:
+                        seen_ids.add(gyg_id)
 
                     activity = Activity(
                         task_id=task_id,
@@ -238,7 +307,7 @@ async def scrape_keyword(
                         select(Activity).where(
                             Activity.task_id == task_id,
                             Activity.gyg_id == item.get("gyg_id"),
-                        )
+                        ).limit(1)
                     )
                     act = result.scalar_one_or_none()
                     if act:

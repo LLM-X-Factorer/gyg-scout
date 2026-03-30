@@ -23,47 +23,64 @@ def _build_prompt(keyword: str, activities: list[dict]) -> str:
             "highlights": a.get("highlights", [])[:5],
         })
 
-    return f"""You are a professional travel product analyst. Analyze the following GetYourGuide search results for the keyword "{keyword}" and generate a comprehensive research report in Markdown format.
+    return f"""你是一位资深旅游行业竞品分析师。我是一个准备在 GetYourGuide 上架产品的商家/供应商，正在对关键词「{keyword}」进行竞品调研。请基于以下采集数据，从商家竞品分析的角度生成一份详尽的中文调研报告（Markdown 格式）。
 
-## Data ({len(activities)} activities collected):
+## 采集数据（共 {len(activities)} 个活动）:
 {json.dumps(summary_data, ensure_ascii=False, indent=2)}
 
-## Report Requirements:
-Generate a structured report with these sections:
+## 报告要求（以商家视角撰写）:
 
-### 1. Market Overview
-- Total number of products found
-- Overall market characteristics for this keyword
+### 1. 市场概览
+- 该关键词下的商品总量和市场活跃度
+- 市场成熟度判断（蓝海/红海/细分机会）
+- 主要品类和产品形态分布（跟团游、自由行、一日游、多日游、门票、体验等）
 
-### 2. Price Analysis
-- Price range (min, max, average, median)
-- Price tiers/bands distribution
-- Price sweet spots
+### 2. 价格策略分析
+- 价格区间（最低、最高、均价、中位数），使用欧元
+- 价格带分布（按区间统计产品数量占比）
+- 不同价格带的竞争激烈程度
+- **定价建议**：作为新入场商家，建议的定价区间和理由
 
-### 3. Rating & Review Analysis
-- Rating distribution
-- Correlation between price and rating
-- Top-rated products and their common traits
+### 3. 竞品评分与口碑分析
+- 评分分布（高分段集中度）
+- 高评分商品（4.8+）的共性特征是什么？
+- 低评分商品的常见问题（如果有）
+- **口碑启示**：哪些因素最影响用户评价？
 
-### 4. Supplier Landscape
-- Number of unique suppliers
-- Top suppliers by product count and ratings
-- Market concentration
+### 4. 头部竞品深度拆解
+- 列出 TOP 10 竞品（按评论数排序），逐一分析：
+  - 产品名称、价格、评分、评论数
+  - 产品卖点和差异化策略
+  - 预估月销量（基于评论数推算）
+- 头部竞品的共性打法
 
-### 5. Product Feature Analysis
-- Common duration patterns
-- Popular highlights/selling points
-- Common inclusions/exclusions
+### 5. 供应商竞争格局
+- 有哪些主要供应商/运营商？
+- 是否存在垄断型玩家？
+- 中小供应商的生存空间分析
 
-### 6. Competitive Insights
-- What makes top products stand out
-- Market gaps and opportunities
-- Recommendations for new entrants
+### 6. 产品设计洞察
+- 热门时长设计（哪些时长最受欢迎）
+- 高频出现的卖点关键词
+- 常见的包含项/不包含项设计
+- 取消政策的主流做法
 
-### 7. Summary & Key Takeaways
-- Top 3-5 actionable insights
+### 7. 市场机会与入场策略
+- **蓝海细分**：尚未被充分覆盖的细分品类或主题
+- **差异化方向**：如何与现有竞品形成差异
+- **定价策略**：建议的价格定位
+- **产品设计建议**：时长、行程亮点、包含项等具体建议
+- **冷启动策略**：新商品如何快速积累评论和排名
 
-Write in a professional, data-driven tone. Use specific numbers from the data. Output in Markdown format only."""
+### 8. 风险提示
+- 该市场的主要风险和挑战
+- 季节性因素
+- 需要注意的合规/运营要点
+
+### 9. 总结：行动清单
+- 列出 5-8 条具体可执行的行动建议，按优先级排序
+
+请用数据说话，引用具体数字。语言风格：专业但易读，适合商业决策参考。全文使用中文。Output in Markdown format only."""
 
 
 async def analyze_activities(keyword: str, activities: list[dict]) -> tuple[str, str]:
