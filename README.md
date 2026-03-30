@@ -4,12 +4,13 @@ GetYourGuide 商品调研与竞品分析工具。输入关键词，自动爬取 
 
 ## Features
 
-- **智能爬取**：基于 Playwright 自动化浏览器，绕过反爬保护，支持搜索结果页 + 商品详情页
-- **AI 分析**：Google Gemini 2.5 Flash 从商家竞品调研角度生成结构化报告
+- **智能爬取**：基于 Playwright 自动化浏览器，绕过反爬保护，搜索结果页 + 全量商品详情页
+- **AI 分析**：Google Gemini 2.5 Flash 从商家竞品调研角度生成结构化报告（10 大模块）
+- **商家策略拆解**：识别每个供应商，分析其产品矩阵、定价逻辑、文案套路
+- **个性化商业建议**：输入你的店铺名称，获得专属诊断和辩证式战略建议
 - **数据可视化**：价格分布、评分分布、价格-评分散点图
-- **PDF 导出**：一键导出专业排版的 PDF 报告
-- **异步任务**：后台执行爬取和分析，前端实时展示进度
-- **中文报告**：报告以中文撰写，价格以人民币（CNY）显示
+- **PDF 导出**：一键导出专业排版的 A4 PDF 报告
+- **中文报告**：全中文撰写，价格以人民币（CNY）显示
 
 ## Architecture
 
@@ -70,10 +71,11 @@ npm run dev
 
 1. Open http://localhost:3000
 2. Enter a search keyword (e.g. `shenzhen`, `paris walking tour`)
-3. Set the number of pages to scrape (1-10)
-4. Click **Start Research** and wait for the task to complete
-5. View the analysis report with charts and data tables
-6. Click **Download PDF** to export the report
+3. Optionally enter your store name (e.g. `La Roja`) for personalized strategy advice
+4. Set the number of pages to scrape (1-10)
+5. Click **Start Research** and wait for the task to complete
+6. View the analysis report with charts and data tables
+7. Click **Download PDF** to export the report
 
 ## API Endpoints
 
@@ -89,9 +91,15 @@ npm run dev
 ### Create Task Example
 
 ```bash
+# Basic research
 curl -X POST http://localhost:8000/api/tasks \
   -H "Content-Type: application/json" \
   -d '{"keyword": "shenzhen", "max_pages": 5}'
+
+# With personalized merchant strategy analysis
+curl -X POST http://localhost:8000/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "shenzhen", "max_pages": 5, "merchant_name": "La Roja"}'
 ```
 
 ## Project Structure
@@ -148,7 +156,9 @@ gyg-scout/
 
 - **Anti-bot bypass**: Uses real Chromium with randomized User-Agent and webdriver detection bypass
 - **GYG page layouts**: Supports both grid layout (e.g. paris) and list layout (e.g. shenzhen)
-- **Deduplication**: Activities are deduplicated by GYG ID across pages
+- **Full detail scraping**: All activities get detail page scraping (supplier, description, highlights, includes/excludes, cancellation policy) — 100% supplier coverage
+- **Deduplication**: Activities are deduplicated by GYG ID across pages (JS + Python level)
+- **Personalized reports**: When `merchant_name` is provided, report includes a dedicated strategy section with dialectical business analysis
 - **Fallback report**: If Gemini API is unavailable, generates a statistical summary report
 - **Currency**: All prices displayed in CNY (RMB)
 
