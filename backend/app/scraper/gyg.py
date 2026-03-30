@@ -154,40 +154,45 @@ EXTRACT_CARDS_JS = """
 EXTRACT_DETAIL_JS = """
 () => {
     const result = {};
+    const bodyText = document.body.innerText || '';
 
-    // Description
-    const aboutSection = document.querySelector('[data-test-id="about-this-activity"]');
-    if (aboutSection) {
-        result.description = aboutSection.textContent.trim().substring(0, 2000);
+    // Supplier / Activity provider
+    const provMatch = bodyText.match(/Activity provider:\\s*([^\\n]+)/);
+    if (provMatch) result.supplier = provMatch[1].trim();
+
+    // Full description
+    const fullDescMatch = bodyText.match(/Full description([\\s\\S]*?)(?=Highlights|What's included|About the activity provider|$)/);
+    if (fullDescMatch) {
+        result.description = fullDescMatch[1].trim().substring(0, 2000);
+    } else {
+        const aboutSection = document.querySelector('[data-test-id="about-this-activity"]');
+        if (aboutSection) result.description = aboutSection.textContent.trim().substring(0, 2000);
     }
 
-    // Highlights
-    const highlights = [];
-    document.querySelectorAll('[data-test-id="highlights"] li, [data-test-id="activity-highlights"] li').forEach(li => {
-        const t = li.textContent.trim();
-        if (t) highlights.push(t);
-    });
-    if (highlights.length) result.highlights = highlights;
+    // Highlights - text pattern based
+    const hlMatch = bodyText.match(/Highlights([\\s\\S]*?)(?=Full description|What's included|$)/);
+    if (hlMatch) {
+        const lines = hlMatch[1].trim().split('\\n').map(l => l.trim()).filter(l => l.length > 5);
+        if (lines.length) result.highlights = lines.slice(0, 10);
+    }
 
-    // Includes / Excludes
-    const includes = [];
-    const excludes = [];
-    document.querySelectorAll('[data-test-id="inclusion-list"] li, [data-test-id="inclusions"] li').forEach(li => {
-        includes.push(li.textContent.trim());
-    });
-    document.querySelectorAll('[data-test-id="exclusion-list"] li, [data-test-id="exclusions"] li').forEach(li => {
-        excludes.push(li.textContent.trim());
-    });
-    if (includes.length) result.includes = includes;
-    if (excludes.length) result.excludes = excludes;
+    // What's included
+    const inclMatch = bodyText.match(/What's included([\\s\\S]*?)(?=What's not included|Meeting point|Cancellation|Important information|$)/);
+    if (inclMatch) {
+        const lines = inclMatch[1].trim().split('\\n').map(l => l.trim()).filter(l => l.length > 2);
+        if (lines.length) result.includes = lines.slice(0, 15);
+    }
+
+    // What's not included
+    const exclMatch = bodyText.match(/What's not included([\\s\\S]*?)(?=Meeting point|Cancellation|Important information|$)/);
+    if (exclMatch) {
+        const lines = exclMatch[1].trim().split('\\n').map(l => l.trim()).filter(l => l.length > 2);
+        if (lines.length) result.excludes = lines.slice(0, 15);
+    }
 
     // Cancellation policy
-    const cancel = document.querySelector('[data-test-id="cancellation-policy"]');
-    if (cancel) result.cancellation_policy = cancel.textContent.trim().substring(0, 500);
-
-    // Supplier
-    const supplier = document.querySelector('[data-test-id="supplier-name"], [data-test-id="offered-by"] a');
-    if (supplier) result.supplier = supplier.textContent.trim();
+    const cancelMatch = bodyText.match(/(Free cancellation[^\\n]*|Cancellation policy[\\s\\S]*?)(?=\\n\\n|$)/i);
+    if (cancelMatch) result.cancellation_policy = cancelMatch[0].trim().substring(0, 500);
 
     return result;
 }
@@ -284,7 +289,7 @@ async def scrape_keyword(
                 key=lambda x: x.get("review_count") or 0,
                 reverse=True,
             )
-            detail_count = min(10, len(sorted_items))
+            detail_count = min(20, len(sorted_items))
             for i, item in enumerate(sorted_items[:detail_count]):
                 detail_url = item.get("url")
                 if not detail_url:
