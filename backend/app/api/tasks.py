@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi.responses import Response
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -120,3 +121,32 @@ async def delete_task(task_id: int, db: AsyncSession = Depends(get_db)):
     await db.delete(task)
     await db.commit()
     return {"ok": True}
+
+
+@router.get("/tasks/{task_id}/export")
+async def export_pdf(task_id: int, db: AsyncSession = Depends(get_db)):
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if not task.report_html:
+        raise HTTPException(status_code=400, detail="Report not ready")
+
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.set_content(task.report_html, wait_until="networkidle")
+        pdf_bytes = await page.pdf(
+            format="A4",
+            margin={"top": "20mm", "bottom": "20mm", "left": "15mm", "right": "15mm"},
+            print_background=True,
+        )
+        await browser.close()
+
+    filename = f"gyg-scout-{task.keyword.replace(' ', '-')}-{task_id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

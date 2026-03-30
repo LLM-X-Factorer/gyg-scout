@@ -5,6 +5,7 @@ import markdown
 from google import genai
 
 from app.config import settings
+from app.report_template import wrap_report_html
 
 logger = logging.getLogger(__name__)
 
@@ -87,11 +88,12 @@ async def analyze_activities(keyword: str, activities: list[dict]) -> tuple[str,
     """Use Gemini to analyze scraped activities. Returns (markdown, html)."""
     if not activities:
         md = f"# Research Report: {keyword}\n\nNo activities found for this keyword."
-        return md, markdown.markdown(md)
+        return md, wrap_report_html(markdown.markdown(md), title=f"Report: {keyword}")
 
     if not settings.gemini_api_key:
         md = _generate_fallback_report(keyword, activities)
-        return md, markdown.markdown(md, extensions=["tables"])
+        body = markdown.markdown(md, extensions=["tables"])
+        return md, wrap_report_html(body, title=f"竞品分析报告：{keyword}")
 
     client = genai.Client(api_key=settings.gemini_api_key)
     prompt = _build_prompt(keyword, activities)
@@ -106,7 +108,8 @@ async def analyze_activities(keyword: str, activities: list[dict]) -> tuple[str,
         logger.error(f"Gemini API error: {e}")
         md = _generate_fallback_report(keyword, activities)
 
-    html = markdown.markdown(md, extensions=["tables", "fenced_code"])
+    body_html = markdown.markdown(md, extensions=["tables", "fenced_code"])
+    html = wrap_report_html(body_html, title=f"竞品分析报告：{keyword}")
     return md, html
 
 
